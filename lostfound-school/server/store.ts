@@ -1,7 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { Claim, Item, ItemInput, Profile } from '../shared/domain.ts'
 import { HttpError } from './errors.ts'
+import { boundedFetch } from './request-context.ts'
 export interface Store {
+  consumeRateLimit(scope: 'read' | 'write'): Promise<boolean>
   listItems(): Promise<Item[]>; getItem(id: string): Promise<Item | null>
   saveItem(id: string | null, input: Partial<ItemInput>): Promise<Item>
   moderate(id: string, status: string): Promise<Item>
@@ -30,6 +32,7 @@ export function supabaseStore(db: SupabaseClient, storageAdmin?: SupabaseClient)
   }
   async function rpcItem(name: string, params: Record<string, unknown>) { return withImage(checked(await db.rpc(name, params)) as Item) }
   return {
+    async consumeRateLimit(scope) { return checked(await db.rpc('consume_api_rate_limit', { p_scope: scope })) === true },
     async listItems() {
       // Page through PostgREST's default 1000-row cap; school catalogs must not silently truncate.
       const rows: Item[] = []
@@ -68,13 +71,14 @@ export function supabaseStore(db: SupabaseClient, storageAdmin?: SupabaseClient)
   }
 }
 export function makeAuthenticator(url: string, key: string, storageKey?: string) {
-  const auth = createClient(url,key,{auth:{persistSession:false,autoRefreshToken:false}})
+  const auth = createClient(url,key,{global:{fetch:boundedFetch},auth:{persistSession:false,autoRefreshToken:false}})
   // Privileged client is confined to storage writes. All SQL calls use the user's JWT.
-  const storageAdmin = storageKey ? createClient(url,storageKey,{auth:{persistSession:false,autoRefreshToken:false}}) : undefined
+  const storageAdmin = storageKey ? createClient(url,storageKey,{global:{fetch:boundedFetch},auth:{persistSession:false,autoRefreshToken:false}}) : undefined
   return async (token: string) => {
     const { data, error } = await auth.auth.getUser(token)
+    if (error && (!error.status || error.status >= 500)) throw new HttpError(503,'Сервис входа временно недоступен')
     if (error || !data.user?.email_confirmed_at || data.user.is_anonymous) return null
-    const db = createClient(url,key,{global:{headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}})
+    const db = createClient(url,key,{global:{fetch:boundedFetch,headers:{Authorization:`Bearer ${token}`}},auth:{persistSession:false,autoRefreshToken:false}})
     const profile = checked(await db.from('profiles').select('id,display_name,role').eq('id',data.user.id).maybeSingle()) as Profile | null
     if (!profile) throw new HttpError(403,'Доступ к школе ещё не подтверждён. Обратитесь к администратору.')
     return {profile, store:supabaseStore(db,storageAdmin)}

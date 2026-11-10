@@ -2,6 +2,17 @@
 
 Date: 2026-11-10. Windows, Node 24.14.1, npm 11.17.0. These results describe local verification, not a deployed production service.
 
+## Vercel adapter verification (latest local run)
+
+- `npm test`: **40 passed, 0 failed**. Nine new adapter tests cover no-store headers, unconfigured 503, configured paths/JWT/CORS/JSON errors, timeout/cancellation and concurrent isolation, shared limiter failures and write denial, genuine Sharp PNG-to-WebP conversion, 4 MB rejection and routing configuration. One new auth test covers sanitized provider outages. The embedded PostgreSQL test additionally verifies counter access denial, quotas, reset on a new window and user isolation.
+- `npm run build`: **passed**, including TypeScript and the API entry point in typecheck. Vite: 1,645 modules; CSS 23.71 kB, JS 315.22 kB. CSS output hash is unchanged from the published redesign; only upload limit/copy changed in the frontend.
+- `npm run test:e2e`: **15 passed, 0 failed**, including accessibility, responsive layouts and disabled auth without Supabase.
+- `npm run check:env`: **expected failure**, reporting seven missing staging variables by name only. No credentials were invented or set.
+- Secret-pattern scan of tracked/new project files: no findings. Production JS contains no Storage secret variable, rate-limit server RPC implementation or test credential markers. `git diff --check` passed. `.vercel/` is now ignored alongside `.env*`.
+- No live Supabase, Linux runtime, Vercel Function packaging, actual edge rewrite execution or remote concurrency verification was performed. Local HTTP tests use Supertest and provider fetch doubles; SQL tests use PGlite. Existing CI will exercise the real Sharp conversion on Ubuntu after an authorized push. Frontend Vite build does not package the API Function.
+
+The original two migrations were not edited. The third migration is local only. No commit, push, deployment or external resource changes were made for this adapter work. See [Vercel architecture and next steps](VERCEL_ONLY_ARCHITECTURE.md).
+
 ## UI/Auth redesign verification (latest local run)
 
 - `npm test`: **30 passed, 0 failed**, including API contracts, real embedded PostgreSQL RLS/return workflow, auth adapters, environment guards, safe auth messages and emoji-free presentation source.

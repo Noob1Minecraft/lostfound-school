@@ -33,6 +33,7 @@
     "scripts",
     "integration",
     "e2e",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "api"
   ]
 }

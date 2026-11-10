@@ -22,6 +22,6 @@ test('uploads reject spoofed bytes, unsupported formats, oversize and non-owners
  const path=`/api/items/${itemId}/image`
  assert.equal((await request(makeApp()).post(path).set('Authorization','Bearer alice').attach('image',Buffer.from('<svg/>'),{filename:'bad.svg',contentType:'image/svg+xml'})).status,400)
  assert.equal((await request(makeApp()).post(path).set('Authorization','Bearer alice').attach('image',Buffer.from('not an image'),{filename:'bad.jpg',contentType:'image/jpeg'})).status,400)
- assert.equal((await request(makeApp()).post(path).set('Authorization','Bearer alice').attach('image',Buffer.alloc(5*1024*1024+1),{filename:'large.jpg',contentType:'image/jpeg'})).status,400)
+ assert.equal((await request(makeApp()).post(path).set('Authorization','Bearer alice').attach('image',Buffer.alloc(4_000_001),{filename:'large.jpg',contentType:'image/jpeg'})).status,400)
  assert.equal((await request(makeApp()).post(path).set('Authorization','Bearer bob').attach('image',Buffer.from('bad'),{filename:'bad.jpg',contentType:'image/jpeg'})).status,403)
 })

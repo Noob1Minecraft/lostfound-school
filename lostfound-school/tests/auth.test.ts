@@ -27,3 +27,12 @@ test('verified outsiders are rejected when membership RLS hides their profile',a
  t.mock.method(globalThis,'fetch',async(input:RequestInfo|URL)=>Response.json(String(input).includes('/auth/v1/user')?{id,email_confirmed_at:'2026-11-10'}:null))
  await assert.rejects(makeAuthenticator('https://school.supabase.co','publishable')('token'),/Доступ к школе/)
 })
+
+test('Auth provider outages are unavailable, not invalid credentials',async t=>{
+ t.mock.method(globalThis,'fetch',async()=>Response.json({message:'private provider diagnostic'},{status:503}))
+ await assert.rejects(makeAuthenticator('https://school.supabase.co','publishable')('token'),error=>{
+  assert.equal((error as {status:number}).status,503)
+  assert.ok(!(error as Error).message.includes('private provider'))
+  return true
+ })
+})
