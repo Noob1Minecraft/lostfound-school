@@ -1,0 +1,28 @@
+# Local configuration and credentials, at every repository depth.
+.env*
+!.env.example
+!.env.staging.example
+.npmrc
+*.pem
+*.key
+*.pfx
+*.p12
+credentials*.json
+secrets*.json
+.secrets/
+**/playwright/.auth/
+storage-state*.json
+
+# Dependencies, generated files and local tooling state.
+node_modules/
+dist/
+coverage/
+*.log
+*.tsbuildinfo
+playwright-report/
+test-results/
+.supabase/
+**/supabase/.temp/
+.vercel/
+.DS_Store
+Thumbs.db

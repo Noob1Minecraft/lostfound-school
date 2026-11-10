@@ -1,0 +1,13 @@
+export const categories = ['Электроника', 'Одежда', 'Школьные принадлежности', 'Аксессуары', 'Другое'] as const
+export const locations = ['Библиотека', 'Кабинет', 'Спортзал', 'Столовая', 'Коридор', 'Другое'] as const
+export const colors = ['Чёрный', 'Белый', 'Синий', 'Красный', 'Зелёный', 'Серебряный', 'Другой'] as const
+export type Category = typeof categories[number]
+export type ItemType = 'lost' | 'found'
+export type ItemStatus = 'pending' | 'approved' | 'rejected' | 'returned'
+export type ItemInput = { type: ItemType; title: string; category: Category; color: string; location: string; date: string; description: string }
+export type Item = ItemInput & { id: string; owner_id: string; status: ItemStatus; image_path: string | null; image_url?: string; created_at: string }
+export type Profile = { id: string; display_name: string; role: 'student' | 'admin' }
+export type Claim = { id: string; claimant_id: string; lost_item_id: string; found_item_id: string; evidence: string; status: 'pending' | 'approved' | 'rejected' | 'returned'; admin_note: string; created_at: string }
+export type Match = { a: Item; b: Item; score: number; level: 'high' | 'possible' | 'low'; reasons: string[] }
+export const statusLabels: Record<ItemStatus | Claim['status'], string> = { pending: 'На проверке', approved: 'Подтверждено', rejected: 'Отклонено', returned: 'Возвращено' }
+export function itemIcon(category: Category) { return ({'Электроника':'🎧','Одежда':'🧥','Школьные принадлежности':'📚','Аксессуары':'🎒','Другое':'📦'})[category] }

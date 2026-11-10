@@ -1,0 +1,25 @@
+# Preparation only. Creating/syncing this Blueprint requires explicit authorization.
+services:
+  - type: web
+    name: lostfound-school-api
+    runtime: node
+    rootDir: lostfound-school
+    buildCommand: npm ci --include=dev && npm run typecheck
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_SECRET_KEY
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: TRUST_PROXY_HOPS
+        value: '1'
