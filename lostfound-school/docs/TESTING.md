@@ -2,6 +2,22 @@
 
 Date: 2026-11-10. Windows, Node 24.14.1, npm 11.17.0. These results describe local verification, not a deployed production service.
 
+## UI/Auth redesign verification (latest local run)
+
+- `npm test`: **30 passed, 0 failed**, including API contracts, real embedded PostgreSQL RLS/return workflow, auth adapters, environment guards, safe auth messages and emoji-free presentation source.
+- `npm run build`: **passed**, including TypeScript; Vite built 1,644 modules. Output: 23.71 kB CSS and 315.23 kB JavaScript (5.86/97.52 kB gzip).
+- `npm run test:e2e`: **15 passed, 0 failed**, Chrome, two local configurations (synthetic provider fixtures and completely unset Supabase configuration).
+- Browser coverage: signup metadata/confirmation, safe errors, login/persistence/logout, recovery request/callback/update, expired links, delayed/rejected profile authorization, non-JSON API failure, catalog/create/edit/match/claim and admin return UI.
+- Axe WCAG A/AA checks: no violations in tested public, student and admin screens. This is automated coverage, not a complete accessibility certification.
+- Responsive checks: public landing at 320, 390, 768 and 1440 pixels; student/admin/auth mobile screens at 390 pixels. No horizontal overflow in tested layouts. Mobile menu Escape/focus behavior passed. Desktop/mobile/auth screenshots were visually inspected.
+- Page-error assertions in the public/unconfigured scenarios passed. No claim of exhaustive browser-console coverage across every route.
+- Source and reachable Git-history pattern scan: no findings for private keys, known token formats, literal JWTs, personal Windows paths, unexpected emails or database credential URLs. No sensitive environment files tracked; `.env`, `.env.local`, `.env.staging` and test output are ignored. Pattern scanning is not a guarantee against every possible secret format.
+- Dependency installation reported zero known vulnerabilities. `git diff --check` passed.
+
+Authentication HTTP responses in browser tests are intercepted fixtures, not real Supabase. Database tests use PGlite with minimal Auth/Storage scaffolding. Live signup/email delivery, real Storage, real Supabase RLS and production concurrency remain unverified. No push or deployment was performed for this redesign.
+
+Earlier records below are historical baselines, not the current test counts.
+
 ## Original repository baseline
 
 All archive source/config files were inspected before product changes. Initial sandboxed npm installation failed with DNS `ENOTFOUND`; the authorized network-enabled install succeeded, reporting zero known vulnerabilities. Original `npm run build` failed because Windows command shims mishandled `&` in the workspace directory. Direct `node node_modules/typescript/bin/tsc --noEmit` and `node node_modules/vite/bin/vite.js build` both passed. Scripts now call Node entry points and work in this path.

@@ -10,4 +10,3 @@ export type Profile = { id: string; display_name: string; role: 'student' | 'adm
 export type Claim = { id: string; claimant_id: string; lost_item_id: string; found_item_id: string; evidence: string; status: 'pending' | 'approved' | 'rejected' | 'returned'; admin_note: string; created_at: string }
 export type Match = { a: Item; b: Item; score: number; level: 'high' | 'possible' | 'low'; reasons: string[] }
 export const statusLabels: Record<ItemStatus | Claim['status'], string> = { pending: 'На проверке', approved: 'Подтверждено', rejected: 'Отклонено', returned: 'Возвращено' }
-export function itemIcon(category: Category) { return ({'Электроника':'🎧','Одежда':'🧥','Школьные принадлежности':'📚','Аксессуары':'🎒','Другое':'📦'})[category] }
