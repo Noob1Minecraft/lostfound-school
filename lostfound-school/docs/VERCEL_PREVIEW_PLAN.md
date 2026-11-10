@@ -13,6 +13,10 @@ Status: local audit complete; publication is NOT authorized by this document. No
 
 ## Phase A: preview without any Supabase credentials
 
+### Preview packaging regression
+
+The first authorized Preview built successfully but `/api/health` failed at startup: emitted `api/index.js` still imported `server/vercel.ts`. Enable TypeScript's `rewriteRelativeImportExtensions` so emitted modules refer to `.js`. `tests/emitted-api.test.ts` now transpiles the API/server/shared modules into an isolated JavaScript-only directory, imports the real entry point and verifies the credential-free JSON 503/no-store response. It reproduced the original missing-module error before the configuration fix. This increases the automated suite to 41 tests; it complements, rather than replaces, hosted Linux Function verification.
+
 This phase can verify packaging and safe failure without consuming Supabase quota. Execute only after explicit approval to commit/push the preview branch.
 
 1. In Vercel, verify the existing **Enginnerus / lostfound-school** project links to **Noob1Minecraft/lostfound-school**, its production branch is **main**, and the live domain still points to the existing production deployment. Record that deployment ID/commit and current asset hashes. The connector previously lacked access, so Dashboard verification may be required. Stop if these settings cannot be confirmed.
