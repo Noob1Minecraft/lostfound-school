@@ -28,6 +28,13 @@ jobs:
           VITE_API_URL: /api
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_PUBLISHABLE_KEY: ''
-      - run: node node_modules/@playwright/test/cli.js install --with-deps chrome
+      - name: Ensure Chrome is available
+        timeout-minutes: 5
+        run: |
+          if command -v google-chrome >/dev/null 2>&1; then
+            google-chrome --version
+          else
+            node node_modules/@playwright/test/cli.js install --with-deps chrome
+          fi
       - run: npm run test:e2e
       - run: npm run test:e2e:neon
