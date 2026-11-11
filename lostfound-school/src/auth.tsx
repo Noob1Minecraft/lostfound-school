@@ -46,12 +46,13 @@ export function AuthProvider({children}:{children:ReactNode}) {
  sessionRef.current=session
  useEffect(()=>{
   if(neonAuth){
-   let active=true, generation=0, refreshing=false
+   let active=true, generation=0, refreshing=false, refreshQueued=false
    const clear=()=>{setSession(null);setProfile(null);setProfileLoading(false);setSessionError('');setProfileError('')}
    const reload=()=>{active=false;clear();setInitialized(false);setAttempt(x=>x+1)}
    const expired=()=>{active=false;clear();setInitialized(true)}
    const revalidate=async()=>{
-    if(!active || refreshing || !sessionRef.current)return
+    if(!active || !sessionRef.current)return
+    if(refreshing){refreshQueued=true;return}
     refreshing=true;const requestGeneration=++generation
     try{
      const next=await api<AuthSession|null>(undefined,'/auth/get-session')
@@ -60,7 +61,7 @@ export function AuthProvider({children}:{children:ReactNode}) {
      else if(next.user.id!==sessionRef.current?.user.id){clear();setSession(next);setProfileLoading(true)}
      // An unchanged identity keeps mounted forms and unsaved files intact.
     }catch{/* Background transport failure is retried on the next focus; business calls still enforce auth. */}
-    finally{refreshing=false}
+    finally{refreshing=false;if(refreshQueued){refreshQueued=false;void revalidate()}}
    }
    const visible=()=>{if(document.visibilityState==='visible')void revalidate()}
    window.addEventListener('school-auth-change',reload)

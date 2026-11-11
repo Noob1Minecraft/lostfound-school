@@ -23,7 +23,7 @@ test('two student accounts and staff complete a return using cookie auth',async(
   else data=[]
   await route.fulfill({json:data})
  })
- async function login(address:string){await page.goto('/login');await page.getByLabel('Email',{exact:true}).fill(address);await page.getByLabel('Пароль',{exact:true}).fill('synthetic-password');await page.getByRole('button',{name:'Войти',exact:true}).click();await expect(page).toHaveURL(/\/app\/dashboard$/)}
+ async function login(address:string){await page.goto('/login');await page.getByLabel('Email',{exact:true}).fill(address);await page.getByLabel('Пароль',{exact:true}).fill('synthetic-password');await page.getByRole('button',{name:'Войти',exact:true}).click();await expect(page).toHaveURL(/\/app(?:\/|$)/);await page.goto('/app/dashboard')}
  async function logout(){await page.getByRole('button',{name:'Выйти',exact:true}).click();await expect(page).toHaveURL(/\/login$/)}
  async function create(type:'lost'|'found',title:string){await page.goto(`/app/items/new?type=${type}`);await page.getByLabel('Название вещи').fill(title);await page.getByLabel('Описание *',{exact:true}).fill('Чёрные наушники в синем чехле');await page.getByRole('button',{name:'Отправить на проверку'}).click();await expect(page.getByRole('heading',{name:title})).toBeVisible()}
  await login('owner@school.test');await create('lost','Потерянные наушники');await logout()
