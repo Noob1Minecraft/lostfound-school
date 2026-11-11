@@ -6,7 +6,7 @@ export const assertRequestActive = () => requests.getStore()?.throwIfAborted()
 
 export const privateResponses: RequestHandler = (_req, res, next) => {
  res.set({ 'Cache-Control': 'private, no-store, max-age=0', 'CDN-Cache-Control': 'no-store', 'Vercel-CDN-Cache-Control': 'no-store' })
- res.vary('Authorization'); res.vary('Origin'); next()
+ res.vary('Authorization'); res.vary('Origin'); res.vary('Cookie'); next()
 }
 
 export function requestDeadline(milliseconds = 15_000): RequestHandler {

@@ -1,59 +1,35 @@
-# Lost&Found School
+# Lost&Found School — school assessment MVP
 
-Школьное бюро находок для одной школы: React + TypeScript + Vite + Tailwind, Express и Supabase. Школьная палитра сохранена; интерфейс обновлён с SVG-иконками. Демо-данные заменены API и PostgreSQL.
+One school, one Vercel application, one Neon project. React + TypeScript provides the existing responsive interface; Express runs in Vercel Functions under `/api`. Neon provides real authentication, PostgreSQL and private image storage. Users only need a browser.
 
-**Статус:** локальная реализация MVP и проверки готовы. Подключение к реальному Supabase, доставка email, Storage и размещение ещё требуют настройки и проверки. Production-ready не заявляется.
+## Assessment features
 
-Настройка нового staging-проекта: [пошаговый Supabase Dashboard checklist](docs/STAGING_SETUP.md).
+- Register, verify email, log in and log out.
+- Create, view and edit Lost/Found listings; search and category/type filters.
+- Deterministic Smart Match using category, color, location, date and description keywords.
+- Staff moderation, private ownership claims and explicit return confirmation.
+- Persistent PostgreSQL records; optional photos processed into WebP.
+- Existing responsive design with SVG icons, without decorative emojis.
 
-## Быстрый старт
+The admin page prioritizes moderation and returns. School access controls are collapsed until needed. There is no payment, multi-school, AI-provider or analytics service. Server authorization, membership checks, RLS, validation, rate limits and private storage remain mandatory.
 
-Нужен Node.js 24 LTS. В терминале из этой папки:
+## Make it work
 
-```powershell
+Use only [MVP_SETUP.md](docs/MVP_SETUP.md) for the active setup and final release checklist. `.env.example` lists required settings with empty credential values. Older Supabase/Render setup documents are historical, not the active path. The previous Supabase adapter remains for compatibility and regression testing; it requires no second resource and is not used in Neon mode.
+
+## Validation
+
+Node.js 24, from this directory:
+
+```text
 npm ci
-Copy-Item .env.example .env
-```
-
-Заполните `.env` данными разрешённого тестового проекта Supabase. Сначала выполните миграцию и настройте доступ школы по [инструкции размещения](docs/DEPLOYMENT.md). Затем в двух терминалах:
-
-```text
-npm run dev:api
-npm run dev
-```
-
-Откройте http://localhost:5173. Без конфигурации работает главная страница, а вход показывает сообщение о необходимости подключения. Реальных демо-аккаунтов, обхода входа или стартовых объявлений нет.
-
-## Возможности
-
-- Русскоязычная главная, адаптивный каталог, поиск и фильтры.
-- Регистрация, вход, выход, подтверждение email и восстановление пароля через Supabase (требуется настройка).
-- Личный кабинет, свои объявления, создание/редактирование и фотографии.
-- Smart Match с объяснением баллов 30/20/20/15/15 и порогами 40/70.
-- Модерация, приватные заявки, проверка владельца и подтверждение возврата.
-- PostgreSQL RLS, проверка ролей/владения, валидация API и ограничения частоты запросов.
-- Миграции, тесты, Vercel frontend и GitHub CI; будущий API планируется на Vercel Functions.
-
-Доступ к объявлениям получают только подтверждённые участники школы. Администратор назначается оператором базы, а не данными регистрации. Секрет Storage хранится только на сервере; в `VITE_*` разрешены только публичные параметры.
-
-## Проверки
-
-```text
 npm test
+npm run typecheck
 npm run build
 npm run test:e2e
-npm run check:env
+npm run test:e2e:neon
 ```
 
-Текущий набор: 40 автоматических тестов и 15 браузерных сценариев, включая auth-состояния, мобильные экраны и axe accessibility. Подробные границы тестирования и незавершённые внешние проверки: [TESTING.md](docs/TESTING.md).
+One existing Ubuntu GitHub Actions workflow runs these checks (build includes TypeScript) and both frontend modes. It has no deployment commands or service secrets. Browser network fixtures are test-only; production never uses them. The explicitly opted-in `test:preview:neon` harness is for the eventual real hosted workflow.
 
-## Документация
-
-- [Обновление UI и Auth](docs/REDESIGN_AUTH.md)
-- [Архитектура только на Vercel](docs/VERCEL_ONLY_ARCHITECTURE.md)
-- [Аудит и план реализации](docs/IMPLEMENTATION_PLAN.md)
-- [Архитектура, безопасность и API](docs/ARCHITECTURE.md)
-- [Настройка и размещение](docs/DEPLOYMENT.md)
-- [Проверки и live acceptance](docs/TESTING.md)
-
-Ранее опубликован frontend. Изменения этого обновления остаются локальными: для push и deployment требуется отдельное разрешение. Исторические инструкции Render не применяются; актуальное направление — только Vercel.
+**Not live-ready yet:** Neon services are not connected, and real registration/email/storage tests have not run. Windows Application Control blocks the local Rollup build module; use authorized Linux CI without weakening Windows security. Publishing the validation branch, any Preview deployment and production release require authorization. Historical reports describe earlier snapshots; see [MVP_STATUS.md](docs/MVP_STATUS.md) for this stage.

@@ -1,8 +1,11 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { Claim, Item, ItemInput, Profile } from '../shared/domain.ts'
+import type { Claim, Item, ItemInput, Profile, Member } from '../shared/domain.ts'
 import { HttpError } from './errors.ts'
 import { boundedFetch } from './request-context.ts'
 export interface Store {
+  closeItem?(id: string): Promise<Item>
+  listMembers?(): Promise<Member[]>
+  manageMember?(input: { email: string; role?: 'student' | 'admin'; active?: boolean }): Promise<Member>
   consumeRateLimit(scope: 'read' | 'write'): Promise<boolean>
   listItems(): Promise<Item[]>; getItem(id: string): Promise<Item | null>
   saveItem(id: string | null, input: Partial<ItemInput>): Promise<Item>

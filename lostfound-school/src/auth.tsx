@@ -1,43 +1,83 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { createClient, type Session } from '@supabase/supabase-js'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createClient } from '@supabase/supabase-js'
 import type { Profile } from '../shared/domain'
+export const neonAuth = import.meta.env.VITE_AUTH_PROVIDER === 'neon'
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-export const supabase = url && key ? createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) : null
-const base = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/,'')
-export async function api<T>(token:string,path:string,options:RequestInit={}):Promise<T> {
+export const supabase = !neonAuth && url && key ? createClient(url,key,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}) : null
+export const authConfigured = neonAuth || Boolean(supabase)
+export type AuthSession = { access_token?: string; user: { id:string; email?:string; name?:string } }
+const base = neonAuth ? '/api' : (import.meta.env.VITE_API_URL || '/api').replace(/\/$/,'')
+export async function api<T>(token:string|undefined,path:string,options:RequestInit={}):Promise<T> {
  const headers=new Headers(options.headers)
- headers.set('Authorization',`Bearer ${token}`)
+ if(!neonAuth && token)headers.set('Authorization',`Bearer ${token}`)
  if(options.body && !(options.body instanceof FormData)) headers.set('Content-Type','application/json')
  const timeout=AbortSignal.timeout(20000)
- const response=await fetch(`${base}${path}`,{...options,headers,signal:options.signal ? AbortSignal.any([options.signal,timeout]) : timeout})
+ const response=await fetch(`${base}${path}`,{...options,credentials:'same-origin',headers,signal:options.signal ? AbortSignal.any([options.signal,timeout]) : timeout})
  if(!response.headers.get('content-type')?.includes('application/json'))throw new Error('Школьный сервис недоступен. Попробуй позже или обратись к сотруднику школы.')
  const result=await response.json().catch(()=>{throw new Error('Школьный сервис вернул некорректный ответ. Попробуй позже.')})
- if(!response.ok) throw new Error(result.error || 'Не удалось выполнить запрос')
+ if(neonAuth && response.status===401 && !path.startsWith('/auth/'))window.dispatchEvent(new Event('school-auth-expired'))
+ if(!response.ok) throw Object.assign(new Error(result.error || 'Не удалось выполнить запрос'),{code:result.code})
  return result as T
 }
-type Auth = { session:Session|null; profile:Profile|null; loading:boolean; error:string; recovering:boolean; retry:()=>void }
+async function managedAuth(path:string,body?:object){return api(undefined,`/auth/${path}`,body ? {method:'POST',body:JSON.stringify(body)} : {})}
+const authChannel=neonAuth && typeof BroadcastChannel!=='undefined' ? new BroadcastChannel('school-auth') : null
+const changed=()=>{window.dispatchEvent(new Event('school-auth-change'));authChannel?.postMessage('changed')}
+export const authClient = {
+ async signIn(email:string,password:string){if(neonAuth){await managedAuth('sign-in/email',{email,password});changed()}else{const result=await supabase!.auth.signInWithPassword({email,password});if(result.error)throw result.error}},
+ async signUp(email:string,password:string,name:string){const callbackURL=`${location.origin}/login`;if(neonAuth){await managedAuth('sign-up/email',{email,password,name,callbackURL});changed()}else{const result=await supabase!.auth.signUp({email,password,options:{data:{display_name:name},emailRedirectTo:callbackURL}});if(result.error)throw result.error}},
+ async forgot(email:string){const redirectTo=`${location.origin}/reset-password`;if(neonAuth)await managedAuth('request-password-reset',{email,redirectTo});else{const result=await supabase!.auth.resetPasswordForEmail(email,{redirectTo});if(result.error)throw result.error}},
+ async reset(password:string,token:string){if(neonAuth)await managedAuth('reset-password',{newPassword:password,token});else{const result=await supabase!.auth.updateUser({password});if(result.error)throw result.error}},
+ async signOut(){if(neonAuth){await managedAuth('sign-out',{});changed()}else{const result=await supabase!.auth.signOut();if(result.error)throw result.error}},
+ async resendVerification(email:string){await managedAuth('send-verification-email',{email,callbackURL:`${location.origin}/login`})},
+}
+type Auth = { session:AuthSession|null; profile:Profile|null; loading:boolean; error:string; recovering:boolean; retry:()=>void }
 const Context=createContext<Auth>({session:null,profile:null,loading:true,error:'',recovering:false,retry:()=>{}})
 export function AuthProvider({children}:{children:ReactNode}) {
- const [session,setSession]=useState<Session|null>(null)
+ const [session,setSession]=useState<AuthSession|null>(null)
  const [profile,setProfile]=useState<Profile|null>(null)
- const [initialized,setInitialized]=useState(!supabase)
+ const [initialized,setInitialized]=useState(!authConfigured)
  const [profileLoading,setProfileLoading]=useState(false)
  const [sessionError,setSessionError]=useState('')
  const [profileError,setProfileError]=useState('')
  const [recovering,setRecovering]=useState(false)
  const [attempt,setAttempt]=useState(0)
+ const sessionRef=useRef(session)
+ sessionRef.current=session
  useEffect(()=>{
+  if(neonAuth){
+   let active=true, generation=0, refreshing=false
+   const clear=()=>{setSession(null);setProfile(null);setProfileLoading(false);setSessionError('');setProfileError('')}
+   const reload=()=>{active=false;clear();setInitialized(false);setAttempt(x=>x+1)}
+   const expired=()=>{active=false;clear();setInitialized(true)}
+   const revalidate=async()=>{
+    if(!active || refreshing || !sessionRef.current)return
+    refreshing=true;const requestGeneration=++generation
+    try{
+     const next=await api<AuthSession|null>(undefined,'/auth/get-session')
+     if(!active || requestGeneration!==generation)return
+     if(!next){clear();setInitialized(true)}
+     else if(next.user.id!==sessionRef.current?.user.id){clear();setSession(next);setProfileLoading(true)}
+     // An unchanged identity keeps mounted forms and unsaved files intact.
+    }catch{/* Background transport failure is retried on the next focus; business calls still enforce auth. */}
+    finally{refreshing=false}
+   }
+   const visible=()=>{if(document.visibilityState==='visible')void revalidate()}
+   window.addEventListener('school-auth-change',reload)
+   window.addEventListener('school-auth-expired',expired)
+   window.addEventListener('focus',revalidate)
+   document.addEventListener('visibilitychange',visible)
+   authChannel?.addEventListener('message',reload)
+   setInitialized(false);setSessionError('')
+   api<AuthSession|null>(undefined,'/auth/get-session').then(next=>{if(active){setSession(next);setProfileLoading(Boolean(next))}}).catch(()=>{if(active){setSession(null);setProfile(null);setSessionError('Не удалось восстановить вход. Попробуй снова.')}}).finally(()=>{if(active)setInitialized(true)})
+   return()=>{active=false;window.removeEventListener('school-auth-change',reload);window.removeEventListener('school-auth-expired',expired);window.removeEventListener('focus',revalidate);document.removeEventListener('visibilitychange',visible);authChannel?.removeEventListener('message',reload)}
+  }
   if(!supabase)return
   let active=true, eventReceived=false
   const {data}=supabase.auth.onAuthStateChange((event,next)=>{
    eventReceived=true
    if(!active)return
-   setSession(next)
-   setProfile(null)
-   setProfileLoading(Boolean(next))
-   setSessionError('')
-   setInitialized(true)
+   setSession(next);setProfile(null);setProfileLoading(Boolean(next));setSessionError('');setInitialized(true)
    if(event==='PASSWORD_RECOVERY')setRecovering(true)
    if(event==='SIGNED_OUT')setRecovering(false)
   })
@@ -50,7 +90,7 @@ export function AuthProvider({children}:{children:ReactNode}) {
   setProfile(null);setProfileError('')
   if(!session){setProfileLoading(false);return}
   const controller=new AbortController();setProfileLoading(true)
-  api<Profile>(session.access_token,'/me',{signal:controller.signal}).then(setProfile)
+  api<Profile>(session.access_token,'/me',{signal:controller.signal}).then(profile=>{if(!controller.signal.aborted)setProfile(profile)})
    .catch(e=>{if(!controller.signal.aborted)setProfileError(message(e))})
    .finally(()=>{if(!controller.signal.aborted)setProfileLoading(false)})
   return()=>controller.abort()

@@ -21,5 +21,13 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Build Neon frontend without service credentials
+        run: npm run build
+        env:
+          VITE_AUTH_PROVIDER: neon
+          VITE_API_URL: /api
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_PUBLISHABLE_KEY: ''
       - run: node node_modules/@playwright/test/cli.js install --with-deps chrome
       - run: npm run test:e2e
+      - run: npm run test:e2e:neon

@@ -7,13 +7,13 @@ import sharp from 'sharp'
 import { ZodError } from 'zod'
 import type { Profile } from '../shared/domain.ts'
 import { explainMatch } from '../shared/matching.ts'
-import { claimInput, claimReview, itemInput, itemPatch, moderation, uuid } from './validation.ts'
+import { claimInput, claimReview, itemInput, itemPatch, moderation, membership, uuid } from './validation.ts'
 import type { Store } from './store.ts'
 import { HttpError } from './errors.ts'
 import { MAX_IMAGE_BYTES } from '../shared/limits.ts'
 import { assertRequestActive, privateResponses, requestDeadline } from './request-context.ts'
 export type AuthContext = { profile: Profile; store: Store }
-type Options = { origin: string; authenticate: (token: string) => Promise<AuthContext | null>; trustProxy?: number; requestTimeoutMs?: number; distributedRateLimit?: boolean }
+type Options = { origin: string; authenticate: (token: string) => Promise<AuthContext | null>; authenticateRequest?: (request: Request, response: Response) => Promise<AuthContext | null>; authRouter?: express.Router; trustProxy?: number; requestTimeoutMs?: number; distributedRateLimit?: boolean }
 export function createApp(options: Options) {
   const app = express()
   app.disable('x-powered-by')
@@ -25,12 +25,14 @@ export function createApp(options: Options) {
   })
   if (options.trustProxy) app.set('trust proxy', options.trustProxy)
   app.use(helmet(), cors({ origin(origin,cb) { cb(origin && origin !== options.origin ? new HttpError(403,'Источник запроса запрещён') : null, options.origin) } }))
-  app.use(express.json({limit:'32kb'}))
   app.get('/api/health', (_req,res) => res.json({status:'ok'}))
   app.use('/api', rateLimit({windowMs:60_000,limit:120,standardHeaders:'draft-8',legacyHeaders:false,message:{error:'Слишком много запросов. Попробуйте через минуту.'}}))
+  if(options.authRouter)app.use('/api/auth',options.authRouter)
+  app.use(express.json({limit:'32kb'}))
   app.use('/api', async (req,res,next) => {
+    if(options.authenticateRequest&&!['GET','HEAD','OPTIONS'].includes(req.method)&&req.headers.origin!==options.origin)throw new HttpError(403,'Источник запроса запрещён')
     const token = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')?.[1]
-    const auth = token ? await options.authenticate(token) : null
+    const auth = options.authenticateRequest ? await options.authenticateRequest(req,res) : token ? await options.authenticate(token) : null
     assertRequestActive()
     if (!auth) throw new HttpError(401,'Войдите и подтвердите email')
     res.locals.auth = auth
@@ -58,8 +60,13 @@ export function createApp(options: Options) {
     const row = await store.getItem(id)
     if (!row) throw new HttpError(404,'Объявление не найдено')
     if (row.owner_id !== profile.id) throw new HttpError(403,'Можно редактировать только свои объявления')
-    if (row.status === 'returned') throw new HttpError(409,'Вещь уже возвращена')
+    if (row.status === 'returned' || row.status === 'closed') throw new HttpError(409,'Объявление закрыто')
     res.json(await store.saveItem(id,input))
+  })
+  app.post('/api/items/:id/close',writes,async(req,res)=>{
+    const store=context(res).store
+    if(!store.closeItem)throw new HttpError(503,'Закрытие объявлений ещё не настроено')
+    res.json(await store.closeItem(uuid.parse(req.params.id)))
   })
   app.get('/api/matches', async (_req,res) => {
     const rows = (await context(res).store.listItems()).filter(x=>x.status==='approved')
@@ -70,6 +77,16 @@ export function createApp(options: Options) {
   app.get('/api/claims', async (_req,res) => res.json(await context(res).store.listClaims()))
   app.post('/api/claims', writes, async (req,res) => res.status(201).json(await context(res).store.createClaim(claimInput.parse(req.body))))
   app.use('/api/admin',admin)
+  app.get('/api/admin/members',async(_req,res)=>{
+    const store=context(res).store
+    if(!store.listMembers)throw new HttpError(503,'Управление доступом ещё не настроено')
+    res.json(await store.listMembers())
+  })
+  app.patch('/api/admin/members',writes,async(req,res)=>{
+    const input=membership.parse(req.body),store=context(res).store
+    if(!store.manageMember)throw new HttpError(503,'Управление доступом ещё не настроено')
+    res.json(await store.manageMember(input))
+  })
   app.get('/api/admin/claims', async (_req,res) => res.json(await context(res).store.listClaims()))
   app.patch('/api/admin/claims/:id', writes, async (req,res) => { const input = claimReview.parse(req.body); res.json(await context(res).store.reviewClaim(uuid.parse(req.params.id),input.status,input.admin_note)) })
   app.patch('/api/admin/items/:id', writes, async (req,res) => res.json(await context(res).store.moderate(uuid.parse(req.params.id),moderation.parse(req.body).status)))

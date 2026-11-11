@@ -34,6 +34,8 @@
     "scripts",
     "integration",
     "e2e",
+    "e2e-neon",
+    "playwright.neon.config.ts",
     "playwright.config.ts",
     "api"
   ]

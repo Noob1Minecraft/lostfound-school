@@ -21,11 +21,11 @@ test('database RLS, role protection and complete two-student return workflow', a
  async function as(id:string) { await db.exec('reset role'); await db.query("select set_config('request.jwt.claim.sub',$1,false)",[id]); await db.exec('set role authenticated') }
  async function rpc<T>(sql:string,params:unknown[]=[]) { return (await db.query<{result:T}>(`select to_jsonb(${sql}) as result`,params)).rows[0].result }
  await as(a)
- for(let i=0;i<20;i++) assert.equal(await rpc<boolean>("consume_api_rate_limit('write')"),true)
- assert.equal(await rpc<boolean>("consume_api_rate_limit('write')"),false)
- assert.equal(await rpc<boolean>("consume_api_rate_limit('read')"),true)
- for(let i=1;i<120;i++) assert.equal(await rpc<boolean>("consume_api_rate_limit('read')"),true)
- assert.equal(await rpc<boolean>("consume_api_rate_limit('read')"),false)
+ // One statement keeps statement_timestamp fixed even across a wall-clock minute boundary.
+ for(const [scope,limit] of [['write',20],['read',120]] as const){
+  const rows=(await db.query<{allowed:boolean}>('select consume_api_rate_limit($1) as allowed from generate_series(1,$2)',[scope,limit+1])).rows
+  assert.deepEqual(rows.map(row=>row.allowed),[...Array<boolean>(limit).fill(true),false])
+ }
  await db.exec("reset role; update private.api_rate_limits set window_start=now()-interval '2 minutes'")
  await as(a); assert.equal(await rpc<boolean>("consume_api_rate_limit('write')"),true)
  await assert.rejects(db.exec('select * from private.api_rate_limits'),/permission denied/)
