@@ -96,3 +96,25 @@ test('default provider fetch is cancelled by the enclosing request deadline',asy
  await request(app).get('/api/auth/get-session').set('Cookie',cookie).expect(504)
  assert.equal(signal?.aborted,true)
 })
+
+
+test('OTP verification proxy restricts purpose, fields and safely maps expired codes',async()=>{
+ const calls:string[]=[]
+ const app=setup(async(url)=>{calls.push(String(url));return Response.json({code:'OTP_EXPIRED',message:'private provider detail'},{status:400})})
+ await request(app).post('/api/auth/email-otp/send-verification-otp').set('Origin',origin).send({email:'pupil@example.com',type:'sign-in'}).expect(400)
+ assert.equal(calls.length,0)
+ const response=await request(app).post('/api/auth/email-otp/verify-email').set('Origin',origin).send({email:'pupil@example.com',otp:'123456'}).expect(400)
+ assert.equal(response.body.code,'OTP_EXPIRED');assert.ok(!JSON.stringify(response.body).includes('private provider'))
+ assert.equal(calls[0],authUrl+'/email-otp/verify-email')
+ await request(app).post('/api/auth/email-otp/verify-email').set('Origin',origin).send({email:'pupil@example.com',otp:'123456',role:'admin'}).expect(400)
+ assert.equal(calls.length,1)
+})
+
+test('OTP success preserves secure cookies and reset errors are allowlisted',async()=>{
+ const app=setup(async()=>Response.json({success:true},{headers:{'set-cookie':'__Secure-neon-auth.session_token=fixture; Path=/; HttpOnly'}}))
+ const verified=await request(app).post('/api/auth/email-otp/verify-email').set('Origin',origin).send({email:'pupil@example.com',otp:'123456'}).expect(200)
+ assert.match(verified.headers['set-cookie'][0],/HttpOnly; Secure; SameSite=Lax/)
+ const expired=setup(async()=>Response.json({code:'INVALID_TOKEN'},{status:400}))
+ const reset=await request(expired).post('/api/auth/reset-password').set('Origin',origin).send({token:'expired-fixture',newPassword:'synthetic-password'}).expect(400)
+ assert.equal(reset.body.code,'INVALID_TOKEN')
+})

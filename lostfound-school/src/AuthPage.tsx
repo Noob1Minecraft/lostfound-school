@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { ArrowLeft, ArrowRight, KeyRound, LockKeyhole, Mail, ShieldCheck } from 'lucide-react'
 import { authClient, authConfigured, neonAuth, useAuth } from './auth'
+import { VerifyEmail } from './VerifyEmail'
 import { authError } from '../shared/auth-errors'
 import { Feedback, Loading } from './ui'
 
@@ -47,13 +48,13 @@ export function AuthPage({ mode }: { mode: Mode }) {
         setNotice(logoutFailed ? 'Пароль изменён. Не удалось завершить сеанс — нажми «Выйти» перед входом с новым паролем.' : 'Пароль изменён. Теперь можно войти с новым паролем.')
       } else if (register) {
         await authClient.signUp(email.trim(), password, name.trim())
-        setPassword(''); setConfirm('')
-        setNotice('Проверь почту и подтверди email по ссылке. Если аккаунт уже есть, войди или восстанови пароль. Доступ к школе выдаёт администратор.')
+        setPassword(''); setConfirm(''); setVerificationNeeded(neonAuth)
+        setNotice('Проверь почту и подтверди email. Если аккаунт уже есть, войди или восстанови пароль. Доступ к школе выдаёт администратор.')
       } else {
         await authClient.signIn(email.trim(), password)
         setPassword('')
       }
-    } catch (err) { setVerificationNeeded(neonAuth && typeof err === 'object' && err !== null && 'code' in err && err.code === 'EMAIL_NOT_VERIFIED'); setError(authError(typeof err === 'object' && err && 'code' in err && err.code === 'EMAIL_NOT_VERIFIED' ? {code:'email_not_confirmed'} : err)) }
+    } catch (err) { setVerificationNeeded(neonAuth && typeof err === 'object' && err !== null && 'code' in err && err.code === 'EMAIL_NOT_VERIFIED'); setError(authError(typeof err === 'object' && err && 'code' in err && err.code === 'EMAIL_NOT_VERIFIED' ? {code:'EMAIL_NOT_VERIFIED'} : err)) }
     finally { setBusy(false) }
   }
 
@@ -67,6 +68,7 @@ export function AuthPage({ mode }: { mode: Mode }) {
       {!authConfigured ? <div className="setup-state" role="status"><ShieldCheck size={24} aria-hidden="true" /><h2>Подключение к школе ещё не настроено</h2><p>Вход, регистрация и восстановление пароля пока недоступны. Мы откроем доступ после подключения школьного сервиса.</p></div> : <>
         {callbackFailed && <Feedback error="Ссылка недействительна или устарела. Запроси новое письмо для восстановления или обратись к сотруднику школы." />}
         {auth.error && <button type="button" className="btn btn-white" disabled={auth.loading} onClick={auth.retry}>Повторить подключение</button>}
+        {verificationNeeded && neonAuth && <VerifyEmail key={email.trim()} email={email.trim()}/>}
         {verificationNeeded && <button type="button" className="btn btn-white" disabled={busy} onClick={resendVerification}>Отправить письмо подтверждения снова</button>}
         {notice && <div className="feedback" role="status"><Mail size={20} aria-hidden="true" />{notice}</div>}
         {reset && auth.loading && !updated ? <Loading /> : reset && (neonAuth ? !resetToken : !auth.session) && !updated ? <div className="form-note">Для смены пароля открой ссылку из письма. <Link to="/forgot-password">Запросить новую ссылку</Link></div> : !updated && !callbackFailed && <form onSubmit={submit} aria-busy={busy}>

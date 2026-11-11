@@ -11,6 +11,8 @@ const email = z.string().email().max(254), password = z.string().min(12).max(128
 const token = z.string().min(1).max(4096).regex(/^[A-Za-z0-9._~+/%=-]+$/)
 const callback = z.string().max(2048).optional()
 const bodies = {
+ 'email-otp/send-verification-otp': z.object({email,type:z.literal('email-verification')}).strict(),
+ 'email-otp/verify-email': z.object({email,otp:z.string().regex(/^[0-9]{4,10}$/)}).strict(),
  'sign-in/email': z.object({email,password:z.string().min(1).max(128),callbackURL:callback,rememberMe:z.boolean().optional()}).strict(),
  'sign-up/email': z.object({email,password,name:z.string().trim().min(1).max(100),callbackURL:callback}).strict(),
  'sign-out': z.object({}).strict(),
@@ -126,6 +128,9 @@ export function createNeonAuthRouter(options:Options) {
   if(response.status>=500 || (response.status>=300 && response.status<400))throw unavailable()
   if(!response.ok) {
    const data=await json(response)
+   const code=typeof data==='object' && data && 'code' in data ? data.code : undefined
+   if(typeof code==='string' && ['OTP_EXPIRED','INVALID_OTP','TOO_MANY_ATTEMPTS','INVALID_TOKEN','TOKEN_EXPIRED'].includes(code)){res.status(400).json({error:'Проверьте код или запросите новое письмо',code});return}
+   if(response.status===429){res.status(429).json({error:'Слишком много попыток',code:'over_request_rate_limit'});return}
    if(typeof data==='object' && data && 'code' in data && data.code==='EMAIL_NOT_VERIFIED'){res.status(403).json({error:'Подтвердите email',code:'EMAIL_NOT_VERIFIED'});return}
    res.status(response.status===429?429:400).json({error:'Не удалось выполнить запрос. Проверьте данные и попробуйте снова.'});return
   }

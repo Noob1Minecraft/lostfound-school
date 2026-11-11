@@ -95,7 +95,7 @@ test('unverified email can request another confirmation email',async({page})=>{
  await expect(page.getByRole('alert')).toContainText('Подтверди email')
  await page.getByRole('button',{name:'Отправить письмо подтверждения снова'}).click()
  await expect(page.getByRole('status')).toContainText('ожидает подтверждения')
- expect(calls.some(x=>x.path.endsWith('/send-verification-email'))).toBeTruthy()
+ expect(calls.some(x=>x.path.endsWith('/email-otp/send-verification-otp'))).toBeTruthy()
 })
 
 test('page refresh restores cookie session and clears expired access',async({page})=>{
@@ -155,4 +155,24 @@ test('valid focus revalidation preserves an unsaved listing draft and file',asyn
  await expect(page.getByLabel('Название вещи')).toHaveValue('Несохранённая тетрадь')
  await expect(page.getByLabel('Описание *',{exact:true})).toHaveValue('Черновик описания с приметами')
  expect(await page.getByLabel('Фото вещи').evaluate(input=>(input as HTMLInputElement).files?.[0]?.name)).toBe('draft.png')
+})
+
+
+test('verification rejects expired code, resends and confirms email without logging in',async({page})=>{
+ await fixture(page)
+ await page.route('**/api/auth/sign-in/email',route=>route.fulfill({status:403,json:{code:'EMAIL_NOT_VERIFIED'}}))
+ await page.goto('/login')
+ await page.getByLabel('Email',{exact:true}).fill('pupil@school.test')
+ await page.getByLabel('Пароль',{exact:true}).fill('test-password-long')
+ await page.getByRole('button',{name:'Войти',exact:true}).click()
+ await page.route('**/api/auth/email-otp/verify-email',route=>route.fulfill({status:400,json:{code:'OTP_EXPIRED'}}))
+ await page.getByLabel('Код подтверждения').fill('123456')
+ await page.getByRole('button',{name:'Подтвердить email',exact:true}).click()
+ await expect(page.getByText('Код истёк. Запроси новый код.')).toBeVisible()
+ await page.getByRole('button',{name:'Отправить письмо подтверждения снова'}).click()
+ await page.route('**/api/auth/email-otp/verify-email',route=>route.fulfill({json:{ok:true}}))
+ await page.getByLabel('Код подтверждения').fill('654321')
+ await page.getByRole('button',{name:'Подтвердить email',exact:true}).click()
+ await expect(page.getByText('Email подтверждён.',{exact:false})).toBeVisible()
+ await expect(page.getByRole('button',{name:'Выйти',exact:true})).toHaveCount(0)
 })

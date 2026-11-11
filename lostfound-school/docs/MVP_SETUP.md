@@ -78,3 +78,23 @@ Only the two `VITE_` settings belong in the browser. Leave Supabase variables un
 Vercel Hobby is restricted to personal, non-commercial use; confirm this assessment's eligibility. No paid fallback is authorized. [Hobby terms](https://vercel.com/docs/plans/hobby).
 
 **Release gate:** until the complete real workflow passes, call this a locally implemented MVP, not a fully working production application.
+
+
+## Managed OTP integration update
+
+The shared Neon email provider supports verification codes, not verification links. The server now allowlists `/email-otp/send-verification-otp` (email-verification purpose only) and `/email-otp/verify-email`; registration and unverified login show code entry. Expired/invalid codes and attempt limits use safe messages. Codes are checked by Neon, never stored locally. Resend uses the provider's rate limits. Password recovery retains the supported `/request-password-reset` and `/reset-password` link flow (15-minute provider expiry); tokens are removed from the address bar. Reset-session revocation and required email verification are enabled. Real email delivery remains untested.
+
+Sources: [Email OTP](https://neon.com/docs/auth/guides/plugins/email-otp), [password reset](https://neon.com/docs/auth/guides/password-reset). The live branch OpenAPI schema confirmed the endpoint names and fields. Shared SMTP is for development/testing; review sender requirements before admitting real pupils.
+
+The dedicated runtime login was created with NOINHERIT, NOSUPERUSER, NOBYPASSRLS, NOCREATEDB and NOCREATEROLE and membership only in school_app/school_identity. A real restricted connection confirmed those flags and zero listing visibility under school_app without identity. Storage credentials have storage scopes on the branch and descendants, not account-management privileges; they are not bucket-specific. Keep only the assessment bucket in that scope.
+
+Private credentials are in ignored `.env.preview`, never in this document or Git. FRONTEND_ORIGIN is deliberately blank pending verified Preview access. The Vercel connector still returns 404 for the intended project/team, so no environment values or Auth origins were changed and no Preview deployed.
+
+Manual Preview handoff:
+1. In the existing Vercel project, select an approved Preview branch/deployment for the reviewed commit. This validation branch still excludes automatic deployments; do not remove that rule or promote to Production.
+2. Add the variables above to Preview only, restricted to the chosen integration branch where available. Copy secrets privately from `.env.preview`; do not use VITE_ prefixes for credentials.
+3. Set FRONTEND_ORIGIN to that exact stable HTTPS Preview origin, with no trailing slash. Add the same origin to Neon Auth trusted origins; callback paths are /login and /reset-password. Avoid wildcard domains.
+4. Rebuild the approved Preview and run synthetic registration, email-code verification, recovery, two-student matching/claims/returns, and private-image checks. The user must receive and enter genuine email codes/links and identify the intended administrator.
+5. Keep Production untouched until separately approved.
+
+Compute note: Neon CLI documentation defines suspend timeout 0 as the plan default and -1 as disabled. No timeout override was made. Endpoint observations during setup showed active; actual five-minute idle suspension still needs observation after all Auth/database clients are idle. [Compute configuration](https://neon.com/docs/cli/postgres).

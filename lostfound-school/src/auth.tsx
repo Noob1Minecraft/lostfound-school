@@ -29,7 +29,8 @@ export const authClient = {
  async forgot(email:string){const redirectTo=`${location.origin}/reset-password`;if(neonAuth)await managedAuth('request-password-reset',{email,redirectTo});else{const result=await supabase!.auth.resetPasswordForEmail(email,{redirectTo});if(result.error)throw result.error}},
  async reset(password:string,token:string){if(neonAuth)await managedAuth('reset-password',{newPassword:password,token});else{const result=await supabase!.auth.updateUser({password});if(result.error)throw result.error}},
  async signOut(){if(neonAuth){await managedAuth('sign-out',{});changed()}else{const result=await supabase!.auth.signOut();if(result.error)throw result.error}},
- async resendVerification(email:string){await managedAuth('send-verification-email',{email,callbackURL:`${location.origin}/login`})},
+ async verifyEmail(email:string,otp:string){await managedAuth('email-otp/verify-email',{email,otp})},
+ async resendVerification(email:string){await managedAuth('email-otp/send-verification-otp',{email,type:'email-verification'})},
 }
 type Auth = { session:AuthSession|null; profile:Profile|null; loading:boolean; error:string; recovering:boolean; retry:()=>void }
 const Context=createContext<Auth>({session:null,profile:null,loading:true,error:'',recovering:false,retry:()=>{}})
