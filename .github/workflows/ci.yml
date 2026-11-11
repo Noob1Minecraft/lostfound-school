@@ -21,8 +21,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
-      - name: Build Neon frontend without service credentials
-        run: npm run build
+      - name: Build Neon frontend with Vercel Preview metadata and no service credentials
+        run: node scripts/build-vercel-preview-fixture.mjs
         env:
           VITE_AUTH_PROVIDER: neon
           VITE_API_URL: /api

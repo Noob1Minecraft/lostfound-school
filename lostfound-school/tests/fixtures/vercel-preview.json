@@ -1,0 +1,20 @@
+{
+  "VITE_VERCEL_ENV": "preview",
+  "VITE_VERCEL_TARGET_ENV": "preview",
+  "VITE_VERCEL_URL": "school-preview.example.com",
+  "VITE_VERCEL_BRANCH_URL": "school-validation.example.com",
+  "VITE_VERCEL_PROJECT_PRODUCTION_URL": "school.example.com",
+  "VITE_VERCEL_DEPLOYMENT_ID": "dpl_fixture",
+  "VITE_VERCEL_PROJECT_ID": "prj_fixture",
+  "VITE_VERCEL_GIT_PROVIDER": "github",
+  "VITE_VERCEL_GIT_REPO_SLUG": "school-fixture",
+  "VITE_VERCEL_GIT_REPO_OWNER": "example",
+  "VITE_VERCEL_GIT_REPO_ID": "123",
+  "VITE_VERCEL_GIT_COMMIT_REF": "codex/neon-linux-validation",
+  "VITE_VERCEL_GIT_COMMIT_SHA": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "VITE_VERCEL_GIT_COMMIT_MESSAGE": "Validate preview build",
+  "VITE_VERCEL_GIT_COMMIT_AUTHOR_LOGIN": "example",
+  "VITE_VERCEL_GIT_COMMIT_AUTHOR_NAME": "Example",
+  "VITE_VERCEL_GIT_PREVIOUS_SHA": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "VITE_VERCEL_GIT_PULL_REQUEST_ID": ""
+}

@@ -1,4 +1,15 @@
 type Environment = Record<string,string|undefined>
+// Exact public framework metadata documented by Vercel, not a prefix exemption.
+// https://vercel.com/docs/environment-variables/framework-environment-variables
+const vercelPublicVariables=new Set([
+ 'VITE_VERCEL_ENV','VITE_VERCEL_TARGET_ENV','VITE_VERCEL_URL',
+ 'VITE_VERCEL_BRANCH_URL','VITE_VERCEL_PROJECT_PRODUCTION_URL',
+ 'VITE_VERCEL_DEPLOYMENT_ID','VITE_VERCEL_PROJECT_ID','VITE_VERCEL_GIT_PROVIDER',
+ 'VITE_VERCEL_GIT_REPO_SLUG','VITE_VERCEL_GIT_REPO_OWNER','VITE_VERCEL_GIT_REPO_ID',
+ 'VITE_VERCEL_GIT_COMMIT_REF','VITE_VERCEL_GIT_COMMIT_SHA','VITE_VERCEL_GIT_COMMIT_MESSAGE',
+ 'VITE_VERCEL_GIT_COMMIT_AUTHOR_LOGIN','VITE_VERCEL_GIT_COMMIT_AUTHOR_NAME',
+ 'VITE_VERCEL_GIT_PREVIOUS_SHA','VITE_VERCEL_GIT_PULL_REQUEST_ID',
+])
 function role(key:string):string|undefined {
  try { return JSON.parse(atob(key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role } catch { return undefined }
 }
@@ -10,7 +21,7 @@ function safeUrl(value:string,originOnly=false) {
 export function validatePublicEnvironment(env:Environment):string[] {
  const errors:string[]=[]
  const allowed=new Set(['VITE_AUTH_PROVIDER','VITE_SUPABASE_URL','VITE_SUPABASE_PUBLISHABLE_KEY','VITE_API_URL'])
- for(const [name,value] of Object.entries(env))if(name.startsWith('VITE_')&&value&&!allowed.has(name))errors.push(`${name}: browser variable is not allowlisted`)
+ for(const [name,value] of Object.entries(env))if(name.startsWith('VITE_')&&value&&!allowed.has(name)&&!vercelPublicVariables.has(name))errors.push(`${name}: browser variable is not allowlisted`)
  if(env.VITE_AUTH_PROVIDER&&!['supabase','neon'].includes(env.VITE_AUTH_PROVIDER))errors.push('VITE_AUTH_PROVIDER: expected supabase or neon')
  if(env.VITE_AUTH_PROVIDER==='neon'&&env.VITE_API_URL&&env.VITE_API_URL!=='/api')errors.push('VITE_API_URL: Neon requires same-origin /api')
  for(const [name,value] of Object.entries(env)) if(name.startsWith('VITE_')&&value&&(secretKey(value)||/SECRET|SERVICE_ROLE|PASSWORD/i.test(name))) errors.push(`${name}: privileged values cannot be exposed to the browser`)
