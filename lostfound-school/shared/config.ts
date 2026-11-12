@@ -9,12 +9,29 @@ const vercelPublicVariables=new Set([
  'VITE_VERCEL_GIT_COMMIT_REF','VITE_VERCEL_GIT_COMMIT_SHA','VITE_VERCEL_GIT_COMMIT_MESSAGE',
  'VITE_VERCEL_GIT_COMMIT_AUTHOR_LOGIN','VITE_VERCEL_GIT_COMMIT_AUTHOR_NAME',
  'VITE_VERCEL_GIT_PREVIOUS_SHA','VITE_VERCEL_GIT_PULL_REQUEST_ID',
+ // https://vercel.com/docs/analytics/package#dynamic-configuration
+ 'VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG',
 ])
 function role(key:string):string|undefined {
  try { return JSON.parse(atob(key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role } catch { return undefined }
 }
 function publicKey(key:string) { return key.startsWith('sb_publishable_') || role(key)==='anon' }
 function secretKey(key:string) { return key.startsWith('sb_secret_') || role(key)==='service_role' }
+function safeObservabilityConfig(value:string):boolean {
+ try {
+  const config:unknown=JSON.parse(value)
+  if(!config||typeof config!=='object'||Array.isArray(config))return false
+  const safe=(entry:unknown):boolean=>{
+   if(typeof entry==='string') {
+    if(secretKey(entry)||/-----BEGIN .*PRIVATE KEY-----|(?:postgres(?:ql)?|https?):\/\/[^\s/]*@|\b(?:gh[pousr]_|github_pat_)/i.test(entry))return false
+    return true
+   }
+   if(entry&&typeof entry==='object')return Object.entries(entry).every(([key,item])=>!/SECRET|TOKEN|PASSWORD|CREDENTIAL|SERVICE_ROLE|PRIVATE_KEY|API[_-]?KEY|ACCESS[_-]?KEY|DATABASE[_-]?URL/i.test(key)&&safe(item))
+   return true
+  }
+  return safe(config)
+ } catch {return false}
+}
 function safeUrl(value:string,originOnly=false) {
  try { const u=new URL(value);return !u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(u.hostname)))&&(!originOnly||u.pathname==='/') } catch {return false}
 }
@@ -25,6 +42,7 @@ export function validatePublicEnvironment(env:Environment):string[] {
  if(env.VITE_AUTH_PROVIDER&&!['supabase','neon'].includes(env.VITE_AUTH_PROVIDER))errors.push('VITE_AUTH_PROVIDER: expected supabase or neon')
  if(env.VITE_AUTH_PROVIDER==='neon'&&env.VITE_API_URL&&env.VITE_API_URL!=='/api')errors.push('VITE_API_URL: Neon requires same-origin /api')
  for(const [name,value] of Object.entries(env)) if(name.startsWith('VITE_')&&value&&(secretKey(value)||/SECRET|SERVICE_ROLE|PASSWORD/i.test(name))) errors.push(`${name}: privileged values cannot be exposed to the browser`)
+ if(env.VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG&&!safeObservabilityConfig(env.VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG))errors.push('VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG: expected JSON object without credentials')
  if(env.VITE_SUPABASE_URL&&!safeUrl(env.VITE_SUPABASE_URL,true))errors.push('VITE_SUPABASE_URL: expected HTTPS project origin')
  if(env.VITE_SUPABASE_PUBLISHABLE_KEY&&!publicKey(env.VITE_SUPABASE_PUBLISHABLE_KEY))errors.push('VITE_SUPABASE_PUBLISHABLE_KEY: expected publishable or legacy anon key')
  if(env.VITE_API_URL&&env.VITE_API_URL!=='/api'&&!safeUrl(env.VITE_API_URL))errors.push('VITE_API_URL: expected /api or HTTPS API URL without credentials')

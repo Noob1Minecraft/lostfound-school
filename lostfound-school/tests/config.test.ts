@@ -5,12 +5,23 @@ import { validateEnvironment, validatePublicEnvironment } from '../shared/config
 const publicEnv={VITE_SUPABASE_URL:'https://staging.supabase.co',VITE_SUPABASE_PUBLISHABLE_KEY:'sb_publishable_fixture',VITE_API_URL:'/api'}
 const vercelPreview=JSON.parse(readFileSync(new URL('./fixtures/vercel-preview.json',import.meta.url),'utf8'))
 
+test('Vercel observability JSON rejects malformed configuration and nested credentials',()=>{
+ const name='VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG'
+ const legacy=`e30.${Buffer.from(JSON.stringify({role:'service_role'})).toString('base64url')}.signature`
+ for(const value of ['not-json','null','[]','"string"',JSON.stringify({analytics:{secret:'private-fixture'}}),JSON.stringify({analytics:{apiKey:'private-fixture'}}),JSON.stringify({analytics:{endpoint:'https://user:password@example.com'}}),JSON.stringify({analytics:{scriptSrc:'sb_secret_fixture'}}),JSON.stringify({analytics:{scriptSrc:legacy}})]) {
+  const errors=validatePublicEnvironment({...publicEnv,[name]:value})
+  assert.ok(errors.length)
+  assert.ok(!errors.join().includes(value))
+  assert.ok(!errors.join().includes('private-fixture'))
+ }
+})
+
 test('documented Vercel Preview metadata is accepted with either frontend provider',()=>{
  for(const app of [publicEnv,{VITE_AUTH_PROVIDER:'neon',VITE_API_URL:'/api'}])assert.deepEqual(validatePublicEnvironment({...app,...vercelPreview}),[])
 })
 
 test('Vercel namespace does not permit unknown or sensitive browser variables',()=>{
- for(const name of ['VITE_UNKNOWN','VITE_DATABASE_URL','VITE_VERCEL_UNKNOWN','VITE_VERCEL_TOKEN','VITE_VERCEL_SECRET','VITE_VERCEL_PASSWORD']) {
+ for(const name of ['VITE_UNKNOWN','VITE_DATABASE_URL','VITE_VERCEL_UNKNOWN','VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG_EXTRA','VITE_VERCEL_TOKEN','VITE_VERCEL_SECRET','VITE_VERCEL_PASSWORD']) {
   const errors=validatePublicEnvironment({...vercelPreview,[name]:'private-fixture'})
   assert.ok(errors.some(error=>error===`${name}: browser variable is not allowlisted`))
   assert.ok(!errors.join().includes('private-fixture'))

@@ -1,5 +1,6 @@
 {
   "VITE_VERCEL_ENV": "preview",
+  "VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG": "{\"analytics\":{\"scriptSrc\":\"/fixture/script.js\",\"eventEndpoint\":\"/fixture/event\",\"viewEndpoint\":\"/fixture/view\"},\"speedInsights\":{\"scriptSrc\":\"/fixture/speed.js\",\"endpoint\":\"/fixture/vitals\"}}",
   "VITE_VERCEL_TARGET_ENV": "preview",
   "VITE_VERCEL_URL": "school-preview.example.com",
   "VITE_VERCEL_BRANCH_URL": "school-validation.example.com",
