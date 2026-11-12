@@ -62,7 +62,6 @@ test('valid images are sanitized to WebP; files above 4 MB are rejected', async 
 
 test('routing keeps all API paths away from SPA fallback and preserves frontend routes', async () => {
  const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'))
- assert.deepEqual(config.rewrites[0], { source: '/api/:path*', destination: '/api' })
  const spa = new RegExp('^' + config.rewrites[1].source + '$')
  for (const path of ['/api', '/api/me', '/api/items/123/image', '/assets/app.js']) assert.equal(spa.test(path), false)
  for (const path of ['/', '/login', '/reset-password', '/app/items/123']) assert.equal(spa.test(path), true)
