@@ -9,3 +9,6 @@ test-results/
 .supabase/
 supabase/.temp/
 .DS_Store
+
+# Local Vercel link metadata and pulled environment files
+.vercel/

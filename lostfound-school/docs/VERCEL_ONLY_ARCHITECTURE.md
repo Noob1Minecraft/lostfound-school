@@ -1,45 +1,90 @@
-# Vercel-only architecture assessment
+# Vercel API adapter: local implementation
 
-This is a local recommendation, not a deployed API. The current Vercel project remains a static Vite frontend. No Functions entry point or routing change was added in this work. Do not create a Render service; earlier Render deployment notes are superseded by this direction.
+No push, deployment, hosted SQL, billing change or Render service is part of this work. The public frontend remains unchanged. This document supersedes the earlier assessment and historical Render instructions.
 
-## Recommended shape
+## Routing and runtime
 
-Keep the React/Vite frontend and existing Express application factory. A future Node.js Function can export an initialized Express app that uses `createApp` and `makeAuthenticator`. Keep `server/index.ts` as the local listener; do not start a server or register process signal handlers from a function entry point. A single same-origin `/api` surface avoids a second hosting service. Route `/api/*` to the function before the SPA fallback; the current rewrite sends those requests to HTML and must be changed only with the tested API adapter.
+Project root stays `lostfound-school`, framework Vite, Node 24, build `npm run build`, output `dist`. `api/index.ts` exports the Express app directly, without `listen`, process handlers or startup network calls. `server/index.ts` remains the local listener. Node is required for Express, Multer and Sharp; do not select Edge.
 
-Vercel officially supports Express as a Node.js Function. Use Node 24 and test the Sharp native dependency on Linux; the Edge runtime is unsuitable for this Express/Multer/Sharp stack. See [Express on Vercel](https://vercel.com/docs/frameworks/backend/express).
+`vercel.json` routes `/api/:path*` to `/api` before the SPA fallback, preserving the original request path for Express. The fallback explicitly excludes `/api` and `/api/*`, as well as assets. Existing `/api/health`, `/api/me`, item CRUD/image, match, claim and admin endpoints retain their paths. Unknown API routes produce JSON errors, never React HTML. SPA routes such as `/login`, `/reset-password` and `/app/items/:id` still return the frontend. Tests verify the routing contract and handler behavior; actual Vercel rewrite execution/packaging remains a preview verification gate.
 
-## Audit and required changes before enabling the API
+The default export is deliberately the Express object (with its `.listen` method), not a wrapper that makes Vercel treat it as a plain handler. The Node adapter recognizes Express and leaves JSON/multipart parsing to its middleware. No Next.js-specific body parser setting is needed.
 
-| Area | Current behavior | Required before deployment |
+## Request and data protections
+
+- Total response deadline: 15 seconds. Supabase HTTP operations: 8 seconds each, combined with the invocation's abort signal. Client timeout remains 20 seconds; Vercel maximum is explicitly 30 seconds. Abort propagates on disconnect/response completion. Late results cannot send a second JSON response. No post-response background work is scheduled.
+- Aborting a request cannot roll back a database write already committed remotely. The timeout message asks users to check the result before retrying; upload cleanup can also be interrupted. No automatic mutation retry is added.
+- Every API response, including errors, sets `Cache-Control: private, no-store, max-age=0`, `CDN-Cache-Control: no-store`, `Vercel-CDN-Cache-Control: no-store`; ETags are disabled. Responses vary on Authorization and Origin.
+- CORS uses only `FRONTEND_ORIGIN`; there is no wildcard or reflection of arbitrary preview origins. JWT verification, confirmed/non-anonymous identity, membership, RLS, owner/admin checks remain required. Role metadata from signup is never authority. No service-role SQL client was introduced.
+- Missing/invalid server configuration returns a generic JSON 503, with no credential values. Health is a liveness/configuration check, not proof of database connectivity or migration readiness.
+
+## Uploads and Sharp
+
+The browser and Multer share a **4,000,000-byte** image limit. Declared request bodies over 4,200,000 bytes receive 413, leaving multipart headroom below Vercel's 4.5 MB platform ceiling. Multer limits files/parts/fields; JSON stays capped at 32 KiB. The platform can reject larger requests before application code, so its error body may differ.
+
+JPEG, PNG and WebP uploads are decoded, limited to 20 million pixels, resized to at most 1600x1600, stripped of metadata and encoded as WebP before private Storage upload. Sharp processing has an 8-second native timeout. The existing private bucket limit (5 MiB of sanitized output) is unchanged; it is not the browser request limit.
+
+Sharp remains a pinned production dependency. The lockfile includes Linux x64 Sharp and libvips optional packages. Vercel must run `npm ci` on Linux with optional dependencies enabled; never copy Windows `node_modules` into the deployment. The new valid-image test exercises real decoding/encoding and will run on Ubuntu in the existing CI after an authorized push. Windows tests do not verify the Linux binary or final Function bundle; preview packaging and upload checks remain required.
+
+## Rate limiting
+
+Both the local listener and Vercel adapter enable the shared limiter. After verified authentication, every API request consumes a 120-per-minute user budget; mutations additionally consume a 20-per-minute budget. Counters use a single atomic PostgreSQL upsert, shared across instances. Caller identity comes only from `auth.uid()`. Quotas and windows are fixed in SQL; clients cannot choose another user, edit counters or invoke anonymously. Counter storage is bounded to two rows per user, removed on user deletion. A new minute resets the counter on the next request.
+
+The RPC fails closed if absent/unavailable. Quota exhaustion returns 429 and `Retry-After: 60`. These are fixed windows, so boundary bursts are possible. The existing pre-authentication IP limiter is retained as best-effort per-instance protection; it is not a distributed DDoS control. The adapter trusts one Vercel ingress hop, never a caller-supplied hop count. Verify forwarded-header behavior in preview.
+
+The counters protect this Express API. A confirmed member can still access permitted Supabase Data API/RPC operations directly under RLS; API quotas do not establish a database-wide abuse quota. Provider/Auth limits and platform protections must be reviewed before opening access broadly. No paid limiter or external store was introduced.
+
+## Environment variables
+
+Set real values only in the authorized environment, never in Git or chat. Keep frontend Supabase variables unset until the backend and staging checks pass.
+
+| Variable | Location | Required value |
 | --- | --- | --- |
-| Authentication | Supabase `getUser(token)` verifies identity; rejects anonymous/unconfirmed accounts | Preserve this check on every private request; never trust browser session data as authorization |
-| Roles and data | Profile role comes from RLS-protected database; SQL runs with caller JWT | Preserve membership checks, admin middleware, owner checks, RPC grants and RLS; never promote from registration metadata |
-| Privileged key | Storage writes only, confined to server client | Set only server environment variable `SUPABASE_STORAGE_SECRET_KEY`; never use a `VITE_` prefix |
-| Uploads | Multer buffers one file, maximum 5 MiB; Sharp checks actual bytes, limits pixels, strips metadata and emits WebP | Reduce frontend/server file limit to at most 4 MB with multipart headroom, or design a private quarantine/sanitization workflow. Do not allow direct public/raw uploads to evade sanitization |
-| Request size | JSON capped at 32 KiB; platform receives multipart before Express | Test platform-level 413s and a friendly client error. A 5 MiB upload cannot reliably reach this function |
-| CORS | Exact configured frontend origin, no wildcard | Prefer same-origin `/api`; explicitly allow intended preview origins only when authorized. CORS is not an auth boundary |
-| Rate limits | In-memory `express-rate-limit` counters | Not global across serverless instances; use transactional Supabase-backed limits and/or verified free platform controls. Do not introduce a paid rate-limit store |
-| Timeouts | Browser aborts after 20 seconds; SDK requests have no explicit server deadline | Add bounded upstream requests, response/error handling, and measure image decode/upload; align server deadline with client behavior |
-| Catalog/matching | Fetches all visible rows, signs every image, computes pairs in memory | Add bounded pagination and query/persisted-match use before larger catalogs; test response size and execution time |
-| Cache/privacy | Private API responses currently lack an explicit cache policy | Set private authenticated API responses to `Cache-Control: no-store`; verify no CDN caching between users |
-| Storage lifecycle | On failed attachment, new upload is removed; replacing an image leaves old objects | Add narrow, authorized orphan cleanup with tests; no broad deletion jobs |
-| Persistence | All data in Supabase, uploads in memory | No reliance on local disk or process memory across requests; no background work after returning a response |
-| Configuration | Listener fails closed if backend config missing | Function must return a sanitized unavailable response when unconfigured; frontend should keep auth disabled until backend is ready |
+| `SUPABASE_URL` | Server | Authorized project HTTPS origin |
+| `SUPABASE_PUBLISHABLE_KEY` | Server | Matching public/publishable key (legacy anon supported) |
+| `SUPABASE_STORAGE_SECRET_KEY` | Server only | Secret/service-role key used only for sanitized Storage writes; omit to disable uploads |
+| `FRONTEND_ORIGIN` | Server | Exact HTTPS frontend origin; production would be `https://lostfound-school.vercel.app` |
+| `VITE_SUPABASE_URL` | Browser build | Same project URL, once ready |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Browser build | Same public key, once ready |
+| `VITE_API_URL` | Browser build | `/api` |
+| `PORT`, `TRUST_PROXY_HOPS` | Local listener only | Defaults 3001 / 0; adapter does not use these for routing/proxy trust |
 
-The current published limits document lists a 4.5 MB function request/response payload ceiling. Hobby Node functions with Fluid Compute have a 300-second maximum; this app should target much shorter requests. Function resources and usage remain subject to Hobby limits. Verify the current limits again before deployment: [Vercel Functions limitations](https://vercel.com/docs/functions/limitations).
+Never create `VITE_SUPABASE_STORAGE_SECRET_KEY`, expose service-role values, or put staging test passwords in Vercel. The existing Vite environment validator rejects privileged public configuration. `npm run check:env` checks the complete configured staging environment; it is expected to fail while credentials are absent.
 
-## Why the backend is not ready to deploy
+## Supabase preparation and release gates
 
-The static UI is safe without credentials, but full auth requires a real Supabase project and an API that verifies school membership. Merely enabling browser Supabase variables is insufficient. We have not tested token issuance, real email links, remote RLS, Storage or concurrent returns against a live instance. The upload-size mismatch and process-local limiter are known migration blockers, not resolved by exporting Express.
+1. Obtain a new authorized staging project without changing existing projects or billing. Current free-project quota and local CLI application-control restrictions remain blockers; do not bypass Windows security.
+2. Apply only missing migrations, in order: `20261110000000_school_mvp.sql`, `20261110010000_staging_hardening.sql`, then **`20261110020000_api_rate_limits.sql`**. Never rewrite/reapply the original migrations. Run `supabase/staging/verify.sql` and inspect every result.
+3. Keep `private` unexposed, RLS enabled, Storage private, membership allowlist operator-managed and admin roles operator-assigned. Configure email verification, SMTP, password policy and exact `/login` and `/reset-password` redirects. Review Security Advisor.
+4. Configure staging environment securely and run `npm run check:env`, registration and full live integration tests. Verify JWT/role/outsider denial, photos, matches and concurrent returns against actual services.
+5. After explicit publication approval, run CI on Linux, build a Vercel preview with the exact project root, and inspect its Function bundle. Verify all API methods, raw multipart parsing, real image upload, CORS/preflight, JSON errors, timeout behavior and no-store headers. Never enable auth against an unverified backend.
+6. Check catalog sizes: listing/image-signing and Smart Match still load the visible catalog and compute pairs in memory. Large catalogs can exceed latency, memory or Vercel's response limit; pagination/bounded matching remains follow-up work. Verify expected school data volume before release.
+7. Obtain explicit approval before production publication. Do not configure Render or paid features.
 
-## Release gate for a future Vercel API change
+## References
 
-1. Obtain authorized Supabase staging capacity without altering existing projects or billing.
-2. Apply the two existing migrations in order and run `supabase/staging/verify.sql`.
-3. Configure email verification, redirects, password policy, SMTP and allowlist membership; assign admin roles only through operator-controlled database actions.
-4. Implement and locally test the function adapter, routing, limits, timeouts, cache policy and durable rate limiting.
-5. Verify function packaging with Sharp on Linux and the platform's multipart/payload behavior.
-6. Run live two-student/admin/outsider tests, actual image upload and signed URL tests, and competing return transactions.
-7. Review database security advisors and get explicit authorization before any backend deployment.
+- [Vercel Node runtime](https://vercel.com/docs/functions/runtimes/node-js)
+- [Vercel Function limits](https://vercel.com/docs/functions/limitations)
+- [Vercel Express handler detection](https://github.com/vercel/vercel/blob/main/packages/node/src/serverless-functions/serverless-handler.mts)
+- [Sharp installation and cross-platform dependencies](https://sharp.pixelplumbing.com/install/)
 
-No paid resources, function routes, Supabase resources or Render services were created by this assessment.
+## Local delivery record
+
+Checks: 40 automated tests, 15 browser scenarios, TypeScript and Vite production build passed. `check:env` reports the expected missing configuration. Full evidence and limitations: [TESTING.md](TESTING.md).
+
+Added files:
+- `api/index.ts`
+- `server/vercel.ts`
+- `server/request-context.ts`
+- `shared/limits.ts`
+- `supabase/migrations/20261110020000_api_rate_limits.sql`
+- `tests/vercel.test.ts`
+
+Modified files:
+- `.env.example`, `.gitignore`, `README.md`
+- `server/app.ts`, `server/index.ts`, `server/store.ts`
+- `src/items.tsx` (upload validation and size copy only; design unchanged)
+- `vercel.json`, `tsconfig.json`
+- `supabase/staging/verify.sql`
+- `tests/api.test.ts`, `tests/auth.test.ts`, `tests/database.test.ts`
+- `docs/STAGING_SETUP.md`, `docs/TESTING.md`, `docs/VERCEL_ONLY_ARCHITECTURE.md`

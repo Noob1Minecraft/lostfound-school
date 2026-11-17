@@ -8,21 +8,24 @@ Create a new project named, for example, `lostfound-school-staging`, in your int
 
 Open **Project Settings → API Keys** and the project's **Connect / Data API** settings. Copy the project URL and **publishable** key into a local file, not this chat. If you only see legacy keys, the frontend key must be `anon`, never `service_role`. A separate backend-only secret key (or legacy service-role key) is needed for image uploads. Do not put it in any `VITE_*` variable. [API key reference](https://supabase.com/docs/guides/getting-started/api-keys).
 
-## 2. Apply exactly these two migrations, in order
+## 2. Apply these three migrations, in order
 
 Use **SQL Editor → New query**, running as the default `postgres` operator. Review the selected project before every run.
 
 1. `supabase/migrations/20261110000000_school_mvp.sql` — initial profiles/items/matches/claims tables, constraints, roles, Auth trigger, RLS, mutation RPC functions, private image bucket and Storage read policies. For a fresh project, paste the **entire** file between `BEGIN;` and `COMMIT;` and run it once. Do not select/run isolated fragments. Do not rerun it if it already succeeded.
 2. `supabase/migrations/20261110010000_staging_hardening.sql` — backfills profiles for previously created Auth users as students, enables RLS on the private membership table, denies banned/deleted/anonymous users through direct database access, removes client Storage deletion, restricts the bucket to sanitized WebP, and reloads the API schema cache. This file already contains `BEGIN`/`COMMIT`; run the entire file as-is.
 
-If the first migration was already applied successfully to this staging project, run **only migration 2**. It preserves existing roles and data. Do not edit/reapply migration 1 to upgrade. If the initial migration failed partway through before using a transaction, stop and inspect the staging schema instead of blindly rerunning or dropping tables.
+3. `supabase/migrations/20261110020000_api_rate_limits.sql` — private per-user counters and fixed-quota rate-limit RPC required by the API. Run the complete file once after migration 2.
+
+If a migration was already applied successfully, do not reapply it: run only the missing later migrations in order. They preserve existing roles and data. Do not edit/reapply migration 1 to upgrade. If the initial migration failed partway through before using a transaction, stop and inspect the staging schema instead of blindly rerunning or dropping tables.
 
 Dashboard SQL Editor execution does not maintain the CLI migration-history table. Keep a record of filenames applied. Do not subsequently `db push` these same files without reconciling history through the supported CLI migration-repair workflow on an approved machine. The installed CLI binary was previously blocked by this Windows host's application-control policy; no attempt was made to bypass it. This is why the additive migration was authored locally and tested with embedded PostgreSQL.
 
 Then run **`supabase/staging/verify.sql`** in a new query. It is read-only. Check:
 
-- All five application tables listed have RLS enabled.
+- All six application tables listed have RLS enabled.
 - `users_without_profile` is zero.
+- The final limiter checks are `true, false, false, true`; `private` remains unexposed.
 - All three direct privilege checks are false.
 - `item-images` is private, 5,242,880 bytes, allowed MIME `image/webp`.
 - Review **all** Storage policies. No broad policy from another app should grant INSERT/UPDATE/DELETE for this bucket. PostgreSQL permissive policies combine with OR; a separate broad policy would defeat these restrictions. Use a dedicated project rather than sharing another app's policies.

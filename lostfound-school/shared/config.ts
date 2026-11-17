@@ -1,15 +1,48 @@
 type Environment = Record<string,string|undefined>
+// Exact public framework metadata documented by Vercel, not a prefix exemption.
+// https://vercel.com/docs/environment-variables/framework-environment-variables
+const vercelPublicVariables=new Set([
+ 'VITE_VERCEL_ENV','VITE_VERCEL_TARGET_ENV','VITE_VERCEL_URL',
+ 'VITE_VERCEL_BRANCH_URL','VITE_VERCEL_PROJECT_PRODUCTION_URL',
+ 'VITE_VERCEL_DEPLOYMENT_ID','VITE_VERCEL_PROJECT_ID','VITE_VERCEL_GIT_PROVIDER',
+ 'VITE_VERCEL_GIT_REPO_SLUG','VITE_VERCEL_GIT_REPO_OWNER','VITE_VERCEL_GIT_REPO_ID',
+ 'VITE_VERCEL_GIT_COMMIT_REF','VITE_VERCEL_GIT_COMMIT_SHA','VITE_VERCEL_GIT_COMMIT_MESSAGE',
+ 'VITE_VERCEL_GIT_COMMIT_AUTHOR_LOGIN','VITE_VERCEL_GIT_COMMIT_AUTHOR_NAME',
+ 'VITE_VERCEL_GIT_PREVIOUS_SHA','VITE_VERCEL_GIT_PULL_REQUEST_ID',
+ // https://vercel.com/docs/analytics/package#dynamic-configuration
+ 'VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG',
+])
 function role(key:string):string|undefined {
  try { return JSON.parse(atob(key.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role } catch { return undefined }
 }
 function publicKey(key:string) { return key.startsWith('sb_publishable_') || role(key)==='anon' }
 function secretKey(key:string) { return key.startsWith('sb_secret_') || role(key)==='service_role' }
+function safeObservabilityConfig(value:string):boolean {
+ try {
+  const config:unknown=JSON.parse(value)
+  if(!config||typeof config!=='object'||Array.isArray(config))return false
+  const safe=(entry:unknown):boolean=>{
+   if(typeof entry==='string') {
+    if(secretKey(entry)||/-----BEGIN .*PRIVATE KEY-----|(?:postgres(?:ql)?|https?):\/\/[^\s/]*@|\b(?:gh[pousr]_|github_pat_)/i.test(entry))return false
+    return true
+   }
+   if(entry&&typeof entry==='object')return Object.entries(entry).every(([key,item])=>!/SECRET|TOKEN|PASSWORD|CREDENTIAL|SERVICE_ROLE|PRIVATE_KEY|API[_-]?KEY|ACCESS[_-]?KEY|DATABASE[_-]?URL/i.test(key)&&safe(item))
+   return true
+  }
+  return safe(config)
+ } catch {return false}
+}
 function safeUrl(value:string,originOnly=false) {
  try { const u=new URL(value);return !u.username&&!u.password&&!u.search&&!u.hash&&(u.protocol==='https:'||(u.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(u.hostname)))&&(!originOnly||u.pathname==='/') } catch {return false}
 }
 export function validatePublicEnvironment(env:Environment):string[] {
  const errors:string[]=[]
+ const allowed=new Set(['VITE_AUTH_PROVIDER','VITE_SUPABASE_URL','VITE_SUPABASE_PUBLISHABLE_KEY','VITE_API_URL'])
+ for(const [name,value] of Object.entries(env))if(name.startsWith('VITE_')&&value&&!allowed.has(name)&&!vercelPublicVariables.has(name))errors.push(`${name}: browser variable is not allowlisted`)
+ if(env.VITE_AUTH_PROVIDER&&!['supabase','neon'].includes(env.VITE_AUTH_PROVIDER))errors.push('VITE_AUTH_PROVIDER: expected supabase or neon')
+ if(env.VITE_AUTH_PROVIDER==='neon'&&env.VITE_API_URL&&env.VITE_API_URL!=='/api')errors.push('VITE_API_URL: Neon requires same-origin /api')
  for(const [name,value] of Object.entries(env)) if(name.startsWith('VITE_')&&value&&(secretKey(value)||/SECRET|SERVICE_ROLE|PASSWORD/i.test(name))) errors.push(`${name}: privileged values cannot be exposed to the browser`)
+ if(env.VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG&&!safeObservabilityConfig(env.VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG))errors.push('VITE_VERCEL_OBSERVABILITY_CLIENT_CONFIG: expected JSON object without credentials')
  if(env.VITE_SUPABASE_URL&&!safeUrl(env.VITE_SUPABASE_URL,true))errors.push('VITE_SUPABASE_URL: expected HTTPS project origin')
  if(env.VITE_SUPABASE_PUBLISHABLE_KEY&&!publicKey(env.VITE_SUPABASE_PUBLISHABLE_KEY))errors.push('VITE_SUPABASE_PUBLISHABLE_KEY: expected publishable or legacy anon key')
  if(env.VITE_API_URL&&env.VITE_API_URL!=='/api'&&!safeUrl(env.VITE_API_URL))errors.push('VITE_API_URL: expected /api or HTTPS API URL without credentials')
@@ -17,6 +50,18 @@ export function validatePublicEnvironment(env:Environment):string[] {
 }
 export function validateServerEnvironment(env:Environment,requireUploads=false):string[] {
  const errors:string[]=[]
+ if(env.BACKEND_PROVIDER&&!['supabase','neon'].includes(env.BACKEND_PROVIDER))errors.push('BACKEND_PROVIDER: expected supabase or neon')
+ if(env.BACKEND_PROVIDER==='neon') {
+  let validDatabase=false
+  try { const u=new URL(env.DATABASE_URL||'');validDatabase=['postgresql:','postgres:'].includes(u.protocol)&&u.hostname.endsWith('.neon.tech')&&decodeURIComponent(u.username)==='school_runtime'&&!!u.password&&u.pathname.length>1&&!u.hash&&u.searchParams.get('sslmode')==='verify-full'&&[...u.searchParams.keys()].every(k=>k==='sslmode') } catch { /* report names only */ }
+  if(!validDatabase)errors.push('DATABASE_URL: required Neon school_runtime PostgreSQL URL with sslmode=verify-full')
+  if(!env.NEON_AUTH_URL||!safeUrl(env.NEON_AUTH_URL)||!env.NEON_AUTH_URL.startsWith('https://'))errors.push('NEON_AUTH_URL: required HTTPS managed authentication URL')
+  for(const name of ['S3_ENDPOINT','S3_REGION','S3_BUCKET','S3_ACCESS_KEY_ID','S3_SECRET_ACCESS_KEY'])if(!env[name])errors.push(`${name}: required server-only object storage configuration`)
+  if(env.S3_ENDPOINT&&(!safeUrl(env.S3_ENDPOINT,true)||!env.S3_ENDPOINT.startsWith('https://')))errors.push('S3_ENDPOINT: expected HTTPS object storage origin')
+  if(env.S3_BUCKET&&!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(env.S3_BUCKET))errors.push('S3_BUCKET: invalid bucket name')
+  if(!env.FRONTEND_ORIGIN||!safeUrl(env.FRONTEND_ORIGIN,true))errors.push('FRONTEND_ORIGIN: required application origin')
+  return errors
+ }
  if(!env.SUPABASE_URL||!safeUrl(env.SUPABASE_URL,true))errors.push('SUPABASE_URL: required HTTPS project origin')
  if(!env.SUPABASE_PUBLISHABLE_KEY||!publicKey(env.SUPABASE_PUBLISHABLE_KEY))errors.push('SUPABASE_PUBLISHABLE_KEY: required publishable or legacy anon key')
  if((requireUploads||env.SUPABASE_STORAGE_SECRET_KEY)&&!secretKey(env.SUPABASE_STORAGE_SECRET_KEY??''))errors.push('SUPABASE_STORAGE_SECRET_KEY: required server-only secret/service-role key for uploads')
@@ -27,6 +72,12 @@ export function validateServerEnvironment(env:Environment,requireUploads=false):
 }
 export function validateEnvironment(env:Environment):string[] {
  const errors=[...validatePublicEnvironment(env),...validateServerEnvironment(env,true)]
+ if(env.BACKEND_PROVIDER==='neon') {
+  if(env.VITE_AUTH_PROVIDER!=='neon')errors.push('VITE_AUTH_PROVIDER: must match BACKEND_PROVIDER=neon')
+  if(env.VITE_API_URL!=='/api')errors.push('VITE_API_URL: required /api')
+  return errors
+ }
+ if(env.VITE_AUTH_PROVIDER==='neon')errors.push('BACKEND_PROVIDER: must match VITE_AUTH_PROVIDER=neon')
  for(const key of ['VITE_SUPABASE_URL','VITE_SUPABASE_PUBLISHABLE_KEY','VITE_API_URL','FRONTEND_ORIGIN'])if(!env[key])errors.push(`${key}: required for staging`)
  if(env.SUPABASE_URL&&env.VITE_SUPABASE_URL&&env.SUPABASE_URL.replace(/\/$/,'')!==env.VITE_SUPABASE_URL.replace(/\/$/,''))errors.push('SUPABASE_URL and VITE_SUPABASE_URL: must identify the same project')
  if(env.SUPABASE_PUBLISHABLE_KEY&&env.VITE_SUPABASE_PUBLISHABLE_KEY&&env.SUPABASE_PUBLISHABLE_KEY!==env.VITE_SUPABASE_PUBLISHABLE_KEY)errors.push('SUPABASE_PUBLISHABLE_KEY and VITE_SUPABASE_PUBLISHABLE_KEY: use the same public key')

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Menu, Plus, X, ShieldCheck, LayoutDashboard, Clock3, CircleCheck, LogOut } from 'lucide-react'
-import { api, AuthProvider, message, supabase, useAuth } from './auth'
+import { api, AuthProvider, message, authClient, useAuth } from './auth'
 import { Catalog, ItemCard, Landing, Mark, NotFound } from './catalog'
 import { ItemDetails, ItemForm } from './items'
 import { Admin, Claims, Matches } from './workflows'
@@ -22,14 +22,14 @@ function Header() {
  const [menu,setMenu]=useState(false),[error,setError]=useState(''),[loggingOut,setLoggingOut]=useState(false),auth=useAuth(),location=useLocation(),menuButton=useRef<HTMLButtonElement>(null)
  useEffect(()=>setMenu(false),[location.pathname])
  useEffect(()=>{if(!menu)return;const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){setMenu(false);menuButton.current?.focus()}};document.addEventListener('keydown',escape);return()=>document.removeEventListener('keydown',escape)},[menu])
- async function logout(){setError('');setLoggingOut(true);try{const result=await supabase?.auth.signOut();if(result?.error)throw result.error}catch{setError('Не удалось выйти. Проверь подключение и попробуй снова.')}finally{setLoggingOut(false)}}
+ async function logout(){setError('');setLoggingOut(true);try{await authClient.signOut()}catch{setError('Не удалось выйти. Проверь подключение и попробуй снова.')}finally{setLoggingOut(false)}}
  return <><a className="skip-link" href="#main">Перейти к содержимому</a><header className="site-header"><div className="container header-inner"><Mark small/><nav id="navigation" aria-label="Основная навигация" className={menu?'nav-links nav-open':'nav-links'}><NavLink end to="/app">Каталог</NavLink><NavLink to="/app/dashboard">Мой кабинет</NavLink><NavLink to="/app/matches">Совпадения</NavLink><NavLink to="/app/my-items">Мои объявления</NavLink>{auth.profile?.role==='admin'&&<NavLink to="/admin">Администратор</NavLink>}</nav><div className="header-actions">{auth.session?<button className="btn btn-white" disabled={loggingOut} onClick={logout}><LogOut size={16} aria-hidden="true"/>{loggingOut?'Выход…':'Выйти'}</button>:<Link className="btn btn-primary" to="/login">Войти</Link>}<button ref={menuButton} className="icon-btn mobile-menu" aria-label={menu?'Закрыть меню':'Открыть меню'} aria-expanded={menu} aria-controls="navigation" onClick={()=>setMenu(!menu)}>{menu?<X aria-hidden="true"/>:<Menu aria-hidden="true"/>}</button></div></div><Feedback error={error}/></header></>
 }
 function SchoolApp(){
  const location=useLocation(),auth=useAuth(),[items,setItems]=useState<Item[]>([]),[loading,setLoading]=useState(false),[error,setError]=useState(''),[revision,setRevision]=useState(0)
  const token=auth.session?.access_token??''
  const refresh=()=>setRevision(x=>x+1)
- useEffect(()=>{setItems([]);setError('');if(!auth.profile||!token)return;const controller=new AbortController();setLoading(true);api<Item[]>(token,'/items',{signal:controller.signal}).then(setItems).catch(e=>{if(!controller.signal.aborted)setError(message(e))}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});return()=>controller.abort()},[token,auth.profile,revision])
+ useEffect(()=>{setItems([]);setError('');if(!auth.profile||!auth.session)return;const controller=new AbortController();setLoading(true);api<Item[]>(token,'/items',{signal:controller.signal}).then(setItems).catch(e=>{if(!controller.signal.aborted)setError(message(e))}).finally(()=>{if(!controller.signal.aborted)setLoading(false)});return()=>controller.abort()},[token,auth.profile,revision])
  const mine=items.filter(x=>x.owner_id===auth.profile?.id)
  function data(children:ReactNode){return <Gate>{loading?<Loading/>:error?<div className="container empty-state"><Feedback error={error}/><button className="btn btn-primary" onClick={refresh}>Повторить</button></div>:children}</Gate>}
  if(auth.recovering&&location.pathname!=='/reset-password')return <Navigate to="/reset-password" replace/>

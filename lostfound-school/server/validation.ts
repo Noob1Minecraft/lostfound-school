@@ -7,3 +7,4 @@ export const itemPatch = itemInput.partial().refine(o => Object.keys(o).length >
 export const claimInput = z.object({ lost_item_id:uuid, found_item_id:uuid, evidence:z.string().trim().min(10).max(1000) }).strict()
 export const claimReview = z.object({ status:z.enum(['approved','rejected','returned']), admin_note:z.string().trim().max(500).default('') }).strict()
 export const moderation = z.object({ status:z.enum(['approved','rejected']) }).strict()
+export const membership = z.object({email:z.string().trim().email().max(254).transform(x=>x.toLowerCase()),role:z.enum(['student','admin']).optional(),active:z.boolean().optional()}).strict().refine(x=>x.role!==undefined||x.active!==undefined,'Нет изменений')
